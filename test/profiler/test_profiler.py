@@ -2997,44 +2997,58 @@ aten::mm""",
             assert len(key_averages) == 3
             assert "Overload Name" in key_averages.table()
             validate_json(prof)
-        
+
     def test_profiler_debug_autotuner(self):
         """
         This test makes sure that profiling events will be present when the kernel is run using the DebugAutotuner.
         """
         in1 = torch.randn((400, 600), device="cuda", dtype=torch.float16)
         in2 = torch.randn((600, 800), device="cuda", dtype=torch.float16)
+
         def mm():
             return torch.mm(in1, in2)
-        
-        pb_mm = torch.compile(mm, options={"benchmark_kernel": True, "max_autotune": True, "max_autotune_gemm_backends": "TRITON", "profile_bandwidth": True})
-        comp_mm = torch.compile(mm, options={"benchmark_kernel": True, "max_autotune": True, "max_autotune_gemm_backends": "TRITON"})
+
+        pb_mm = torch.compile(
+            mm,
+            options={
+                "benchmark_kernel": True,
+                "max_autotune": True,
+                "max_autotune_gemm_backends": "TRITON",
+                "profile_bandwidth": True,
+            },
+        )
+        comp_mm = torch.compile(
+            mm,
+            options={
+                "benchmark_kernel": True,
+                "max_autotune": True,
+                "max_autotune_gemm_backends": "TRITON",
+            },
+        )
 
         with profile() as prof1:
             pb_mm()
         with profile() as prof2:
             comp_mm()
+
         def names(prof):
-            return {ev.name for ev in prof.events() if "mm" in ev.name or "triton" in ev.name}
-        # for ev in prof1.events():
-        #     if ev.name == "triton_tem_fused_mm_0":
-        #         breakpoint()
-        # for ev in prof2.events():
-        #     if ev.name == "triton_tem_fused_mm_0":
-        #         breakpoint()
-        
+            return {
+                ev.name
+                for ev in prof.events()
+                if "mm" in ev.name or "triton" in ev.name
+            }
+
         trace1 = "/tmp/trace1_pb.json"
         trace2 = "/tmp/trace2_nopb.json"
         print(trace1, trace2)
         prof1.export_chrome_trace(trace1)
         prof2.export_chrome_trace(trace2)
         breakpoint()
-        
+
         n1 = names(prof1)
         n2 = names(prof2)
         self.assertEqual(n1, n2)
-        breakpoint()        
-
+        breakpoint()
 
 
 if __name__ == "__main__":

@@ -28,7 +28,6 @@ from torch.testing._internal.common_device_type import (
     skipIf,
 )
 from torch.testing._internal.common_utils import parametrize, run_tests, TestCase
-from torch.utils.flop_counter import countable
 
 
 example_profile = """
@@ -214,6 +213,7 @@ def omni_model(device, dtype, compile=True):
         )
     return model
 
+
 def omni_model_no_addmm(device, dtype, compile=True):
     T = cT(device, dtype)
 
@@ -262,6 +262,7 @@ def omni_model_no_addmm(device, dtype, compile=True):
             model, options={"benchmark_kernel": True, "profile_bandwidth": True}
         )
     return model
+
 
 def omni_model_no_bmm(device, dtype, compile=True):
     T = cT(device, dtype)
@@ -335,7 +336,6 @@ class TestUtils(TestCase):
         self.assertEqual(set(res), {("a", 1, 3), ("b", 2, "bar"), ("c", "foo", 4)})
         res = zip_dicts(d1, d2)
         self.assertEqual(set(res), {("a", 1, 3), ("b", 2, None), ("c", None, 4)})
-
 
 
 class TestAnalysis(TestCase):
@@ -493,9 +493,10 @@ class TestAnalysis(TestCase):
                     lines[line_number : min(len(lines), line_number + lookforward)]
                 )
                 if re.search(r"kernel_flop", surrounding_lines):
-                    kernel_flop_number = int(
-                        re.search(r"'kernel_flop': (\d+)", surrounding_lines).group(1)
-                    )
+                    res = re.search(r"'kernel_flop': (\d+)", surrounding_lines)
+                    self.assertNotEqual(res, None)
+                    assert res is not None
+                    kernel_flop_number = int(res.group(1))
 
                     self.assertNotEqual(
                         kernel_flop_number, 0, "kernel_flop should be nonzero"
@@ -523,10 +524,12 @@ class TestAnalysis(TestCase):
         T = cT(device, dtype)
         input_conv = T(1, 3, 56, 56)
         conv_weight = T(12, 3, 5, 5)
+
         def om(i, w):
             # Convolution operation
             conv_output = F.conv2d(i, w)
             return conv_output
+
         max_autotune, backends = maxat
         comp_omni = torch.compile(
             om,
@@ -537,6 +540,7 @@ class TestAnalysis(TestCase):
                 "max_autotune": max_autotune,
             },
         )
+
         def verify_triton(comp):
             torch._dynamo.reset()  # reset the cache
             with fresh_inductor_cache():
@@ -552,6 +556,7 @@ class TestAnalysis(TestCase):
                 if "triton" in event["name"] and "conv" in event["name"]:
                     seen = True
             self.assertTrue(seen, "no triton conv found")
+
         verify_triton(comp_omni)
 
     @skipIf(not SM70OrLater, "Requires sm70")
@@ -611,14 +616,18 @@ class TestAnalysis(TestCase):
         seen_baddbmm = False
         seen_conv = False
         for event in out_profile["traceEvents"]:
-            if "cat" not in event or event["cat"] != "kernel" or "args" not in event or "External id" not in event["args"]:
+            if (
+                "cat" not in event
+                or event["cat"] != "kernel"
+                or "args" not in event
+                or "External id" not in event["args"]
+            ):
                 continue
 
             external_op = extern_mapping[event["args"]["External id"]][0]
-            name = external_op["name"]
-            # print(external_op["name"])
-            # if "conv" in external_op["name"] and "cudnn" not in name:
-            #     breakpoint()
+            name: str = external_op["name"]
+            self.assertNotEqual(name, None)
+            self.assertEqual(type(name), str)
             if name.startswith("aten::mm") or "_mm_" in name:
                 seen_mm = True
                 self.assertEqual(
@@ -626,9 +635,13 @@ class TestAnalysis(TestCase):
                     flop_counts["Global"][torch.ops.aten.mm],
                 )
             if (
-                name.startswith("aten::cudnn_convolution")
-                or name.startswith("aten::convolution")
-                or name.startswith("aten::_convolution")
+                name.startswith(
+                    (
+                        "aten::cudnn_convolution",
+                        "aten::convolution",
+                        "aten::_convolution",
+                    )
+                )
                 or "_convolution_" in name
             ):
                 seen_conv = True
@@ -649,9 +662,6 @@ class TestAnalysis(TestCase):
                     flop_counts["Global"][torch.ops.aten.bmm],
                 )
         self.assertTrue(seen_mm)
-        # if dtype == torch.double:
-        #     self.assertTrue(seen_bmm)
-        # else:
         self.assertTrue(seen_bmm)
         self.assertTrue(seen_baddbmm)
         self.assertTrue(seen_conv)

@@ -3,7 +3,7 @@ import math
 from collections import defaultdict
 from dataclasses import dataclass
 from logging import info
-from typing import Any, Optional, Union
+from typing import Any, Callable, Optional, Union
 
 import torch
 from torch._inductor.analysis.device_info import DeviceInfo, lookup_device_info
@@ -27,7 +27,9 @@ class ProfileEvent:
 
 
 # adapters convert the json trace into a format that works with flops_counter
-adapters_map: dict[str, Any] = {}
+ArgsType = tuple[tuple[Any, ...], dict[Any, Any]]
+AdapterType = Callable[[tuple[Any, ...], tuple[Any, ...]], ArgsType]
+adapters_map: dict[str, AdapterType] = {}
 
 
 def parse_list(lst: str) -> list[int]:
@@ -36,20 +38,21 @@ def parse_list(lst: str) -> list[int]:
     return [int(substring.strip()) for substring in substrings]
 
 
-def register_adapter(aten: Union[str, list[str]]):  # type: ignore[no-untyped-def]
-    def decorator(func):  # type: ignore[no-untyped-def]
+def register_adapter(
+    aten: Union[str, list[str]],
+) -> Callable[
+    [AdapterType],
+    AdapterType,
+]:
+    def decorator(func: AdapterType) -> AdapterType:
         global _adapters_map
 
-        def wrapper(*args, **kwargs):  # type: ignore[no-untyped-def]
-            result = func(*args, **kwargs)
-            return result
-
         if isinstance(aten, str):
-            adapters_map[aten] = wrapper
+            adapters_map[aten] = func
         else:
             for at in aten:
-                adapters_map[at] = wrapper
-        return wrapper
+                adapters_map[at] = func
+        return func
 
     return decorator
 
@@ -149,7 +152,7 @@ def _calculate_flops(event: dict[str, Any]) -> int:
         return 0
 
     op_obj = getattr(torch.ops.aten, op_name, None)
-    if op_obj is None or not op_obj in flop_registry:
+    if op_obj is None or op_obj not in flop_registry:
         return 0
 
     flop_function = flop_registry[op_obj]
