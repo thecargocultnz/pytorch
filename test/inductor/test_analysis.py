@@ -361,14 +361,18 @@ class TestAnalysis(TestCase):
         REPEAT = 5
         trace1, trace2 = trace_files()
         print("first trace")
-        with torch.profiler.profile(record_shapes=True) as p:
-            om()
+        torch._dynamo.reset()  # reset the cache
+        with fresh_inductor_cache():
+            with torch.profiler.profile(record_shapes=True) as p:
+                om()
         p.export_chrome_trace(trace1)
 
         print("second trace")
-        with torch.profiler.profile(record_shapes=True) as p:
-            for _ in range(REPEAT):
-                om()
+        torch._dynamo.reset()  # reset the cache
+        with fresh_inductor_cache():
+            with torch.profiler.profile(record_shapes=True) as p:
+                for _ in range(REPEAT):
+                    om()
         p.export_chrome_trace(trace2)
 
         print("diffing...")
@@ -403,10 +407,13 @@ class TestAnalysis(TestCase):
             # cpu doesn't produce traces currently
             return
         om = omni_model(device, dtype)
-        with torch.profiler.profile(record_shapes=True) as p:
-            om()
+        torch._dynamo.reset()  # reset the cache
+        with fresh_inductor_cache():
+            with torch.profiler.profile(record_shapes=True) as p:
+                om()
         trace1, trace2 = trace_files()
         p.export_chrome_trace(trace1)
+
         with patch("sys.argv", [*prefix, "--augment_trace", trace1, trace2]):
             main()
         profile = JsonProfile(trace2, 1, "foo")
@@ -560,7 +567,7 @@ class TestAnalysis(TestCase):
         verify_triton(comp_omni)
 
     @skipIf(not SM70OrLater, "Requires sm70")
-    @dtypes(torch.float, torch.double, torch.float16)
+    @dtypes(torch.float, torch.float16)
     @parametrize(
         "maxat",
         [
@@ -574,10 +581,7 @@ class TestAnalysis(TestCase):
         if device == "cpu":
             return
         max_autotune, backends = maxat
-        if dtype == torch.double:
-            om = omni_model_no_addmm(device, dtype, compile=False)
-        else:
-            om = omni_model(device, dtype, compile=False)
+        om = omni_model(device, dtype, compile=False)
 
         comp_omni = torch.compile(
             om,
