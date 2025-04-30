@@ -8,7 +8,7 @@ if(WERROR)
 endif()
 
 function(metal_to_air SRC TARGET FLAGS)
-    add_custom_command(COMMAND xcrun metal -c ${SRC} -o ${TARGET} ${FLAGS} ${METAL_CFLAGS}
+    add_custom_command(COMMAND xcrun metal -c -mmacosx-version-min=12.3 ${SRC} -o ${TARGET} ${FLAGS} ${METAL_CFLAGS}
                        DEPENDS ${SRC}
                        OUTPUT ${TARGET}
                        COMMENT "Compiling ${SRC} to ${TARGET}"
