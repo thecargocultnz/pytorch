@@ -792,13 +792,11 @@ class _FlopCounterMode(TorchDispatchMode):
         return self.counter._count_flops(func._overloadpacket, out, args, kwargs)
 
 def countable(node: torch.fx.Node) -> bool:
-    if not isinstance(node, torch.fx.Node):
-        breakpoint()
-    assert(isinstance(node, torch.fx.Node))
+    assert isinstance(node, torch.fx.Node)
     if not hasattr(node, "target"):
         return False
-    target = node.target.overloadpacket
-
-    return target in flop_registry
-    
-    
+    target = node.target
+    if not hasattr(target, "overloadpacket"):
+        return False
+    packet = target.overloadpacket
+    return packet in flop_registry
