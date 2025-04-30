@@ -793,10 +793,11 @@ class BaseSchedulerNode:
             return None
         if not countable(fx_node):
             return None
-        op = fx_node.target._overloadpacket
 
         flops = count_flops_fx(fx_node)
-        return flops
+
+        resolved_flops = V.graph.sizevars.size_hints((flops,))[0]
+        return resolved_flops
 
     @cache_on_self
     def get_estimated_runtime(self) -> float:
@@ -839,27 +840,24 @@ class BaseSchedulerNode:
             return 0
 
         if isinstance(self, FusedSchedulerNode):
-            flops_est = float(
-                sum(
-                    filter(
-                        lambda x: x is not None,
-                        (node.get_estimated_runtime() for node in self.get_nodes()),
-                    )
+            flops_est = sum(
+                filter(
+                    lambda x: x is not None,
+                    (node.get_estimated_runtime() for node in self.get_nodes()),
                 )
             )
         else:
             flops_est = self.estimate_flops()
 
-        if flops_est == 0:
+        if flops_est == 0 or flops_est is None:
             # no flops estimate, so fall back to memory estimate
             return self.get_read_write_buffers_sizes() / gpu_memory_bandwidth
 
-        counted_flops: int = 0 if flops_est is None else flops_est
         # TODO(xmfan): find a better heuristic to model FLOPS/latency relationship
         factor = 1.0
         counted_bytes = self.get_read_write_buffers_sizes()
         counted_bytes = 0 if counted_bytes is None else counted_bytes
-        compute_time = (factor * counted_flops / gpu_flops) * 1e9
+        compute_time = (factor * flops_est / gpu_flops) * 1e9
         transfer_time = counted_bytes / gpu_memory_bandwidth
 
         # Return estimated runtime in nanoseconds

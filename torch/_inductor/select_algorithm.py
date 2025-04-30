@@ -436,7 +436,7 @@ class TritonTemplateKernel(TritonKernel):
                 if countable(fx_node):
                     f = count_flops_fx(fx_node)
                     if f is not None:
-                        return f
+                        return V.graph.sizevars.size_hints((f,))[0]
         return 0
 
     def jit_lines(self):
