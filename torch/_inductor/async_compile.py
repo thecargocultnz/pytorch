@@ -355,24 +355,28 @@ class AsyncCompile:
             return future
         else:
             with dynamo_timed(
-                "async_compile.precompile",
-                log_pt2_compile_event=True,
-                dynamo_compile_column_us="triton_compile_time_us",
+                "compile_async",
                 log_waitcounter=True,
-            ):
-                start_ns = time_ns()
-                _set_triton_ptxas_path()
-                kernel = load_kernel()
-                kernel.set_compile_info(compile_id, is_backward)
-                kernel.precompile(
-                    warm_cache_only=False,
-                    static_triton_bundle_key=CompiledTritonKernels.key(source_code),
-                )
-                elapsed_us = (time_ns() - start_ns) // 1000
-                get_metrics_context().add_top_n(
-                    "triton_kernel_compile_times_us", kernel_name, elapsed_us
-                )
-                return kernel
+                ):
+                with dynamo_timed(
+                    "async_compile.precompile",
+                    log_pt2_compile_event=True,
+                    dynamo_compile_column_us="triton_compile_time_us",
+                    log_waitcounter=True,
+                ):
+                    start_ns = time_ns()
+                    _set_triton_ptxas_path()
+                    kernel = load_kernel()
+                    kernel.set_compile_info(compile_id, is_backward)
+                    kernel.precompile(
+                        warm_cache_only=False,
+                        static_triton_bundle_key=CompiledTritonKernels.key(source_code),
+                    )
+                    elapsed_us = (time_ns() - start_ns) // 1000
+                    get_metrics_context().add_top_n(
+                        "triton_kernel_compile_times_us", kernel_name, elapsed_us
+                    )
+                    return kernel
 
     def multi_kernel(self, *args, **kwargs) -> Any:
         from torch._inductor.codegen.multi_kernel import MultiKernelCall
@@ -440,12 +444,16 @@ class AsyncCompile:
     def wait(self, scope: dict[str, Any]) -> None:
         if get_compile_threads() > 1:
             with dynamo_timed(
-                "async_compile.wait",
-                log_pt2_compile_event=True,
-                dynamo_compile_column_us="triton_compile_time_us",
+                "compile_async",
                 log_waitcounter=True,
-            ):
-                self._wait_futures(scope)
+                ):
+                with dynamo_timed(
+                    "async_compile.wait",
+                    log_pt2_compile_event=True,
+                    dynamo_compile_column_us="triton_compile_time_us",
+                    log_waitcounter=True,
+                ):
+                    self._wait_futures(scope)
 
         _compile_end()
 
